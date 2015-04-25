@@ -133,6 +133,11 @@ class Diffuse(Texture):
             o = world.intersects(p, (light.loc-p).norm(), [pobj])
             if o is False or p.dist(light.loc) < p.dist(o[0]):
                 res += light.color*light.intensity*pobj.shade(p, (light.loc-p).norm())*self.diffuse/(p.dist(light.loc)**2)
+            elif isinstance(o[2].texture, Transparent): #TODO: check for partial transparency
+                # Shadowed by transparent object
+                # Start by getting photons for the given light
+                photons = light.getphotons(world, o[2])
+                #TODO: use photons to determine caustic density
         return res
 
 class Specular(Texture):
@@ -367,6 +372,8 @@ class Sphere(Object):
             raise NotImplementedError # Totally internal reflection
         return np, rV, p.dist(np)
         
+    def photons(self, P, num):
+        return [(None, None)] #TODO
 
 class Plane(Object):
     def __init__(self, loc, normal, texture):
@@ -427,10 +434,21 @@ class Inverse(Object):
         return self.obj.shade(P, V.scale(-1))
     
 class Light(Object):
+    nphotons = 1024
+
     def __init__(self, loc, color, intensity):
         Object.__init__(self, loc)
         self.color = color
         self.intensity = intensity
+        self.photons = {}
+
+    def getphotons(self, world, transp_obj):
+        if self.photons.get((world, transp_obj), None) is not None:
+            return self.photons[(world, transp_obj)]
+        photons = {}
+        self.photons[(world, transp_obj)] = photons
+        for (E, V) in transp_obj.photons(self.loc, photons):
+            raise ValueError("todo") #TODO
 
 class Camera(Object):
     def __init__(self, loc, aim, u=160):
@@ -473,29 +491,30 @@ if __name__ == "__main__":
         Plane(Coord(0,-2,0), Vector(0,1,0),
           Checkers(Diffuse(Color(255,255,255), .2), Diffuse(Color(0,0,0), .2))
         ),
-        Intersection(
-          Inverse(
-            Sphere(Coord(0,0,-5), .95, Texture()),
-            Texture()
-          ),
-          Intersection(
-            Sphere(Coord(0,0,-5), 1, Texture()),
-            HalfSpace(Coord(0,0,0), Vector(0,1,0), Texture()),
-            Texture()
-          ),
-          CombTexture(
-            (Reflective(), .2),
-            (Diffuse(Color(255,0,0), .2), .8),
-            (Specular(30), .8),
-          )
-        ),
+#        Intersection(
+#          Inverse(
+#            Sphere(Coord(0,0,-5), .95, Texture()),
+#            Texture()
+#          ),
+#          Intersection(
+#            Sphere(Coord(0,0,-5), 1, Texture()),
+#            HalfSpace(Coord(0,0,0), Vector(0,1,0), Texture()),
+#            Texture()
+#          ),
+#          CombTexture(
+#            (Reflective(), .2),
+#            (Diffuse(Color(255,0,0), .2), .8),
+#            (Specular(30), .8),
+#          )
+#        ),
         Sphere(Coord(-.2,.5,-5), .33,
-          CombTexture(
-            (Transparent(Color(0,255,0), .8, 1.1), .7),
-            (Reflective(), .1),
-            (Diffuse(Color(0,255,0), .2), .2),
-            (Specular(35), .4),
-          )
+          Transparent(Color(0,255,0), .8, 1.1),
+#          CombTexture(
+#            (Transparent(Color(0,255,0), .8, 1.1), .7),
+#            (Reflective(), .1),
+#            (Diffuse(Color(0,255,0), .2), .2),
+#            (Specular(35), .4),
+#          )
         ),
       ),
       [
