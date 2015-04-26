@@ -3,7 +3,7 @@
 # raytrace.py -- Seth Just
 
 from math import floor
-from numpy import sqrt, pi, sin, cos
+from numpy import sqrt, pi, sin, cos, e
 import numpy
 import Image
 
@@ -137,10 +137,19 @@ class Diffuse(Texture):
                 res += light.color*light.intensity*pobj.shade(p, (light.loc-p).norm())*self.diffuse/(p.dist(light.loc)**2)
             elif isinstance(o[2].texture, Transparent): #TODO: check for partial transparency
                 # Shadowed by transparent object
+                #TODO: make separate Caustic texture
+                #TODO: caustics outside shadows
                 # Start by getting photons for the given light
                 photons = light.getphotons(world, o[2])
-                print len(photons)
-                #TODO: use photons to determine caustic density
+                # Keep only those falling on this object
+                photons = filter(lambda (php, phtext, phpobj): pobj is phpobj, photons)
+                for ph in photons:
+                    dist = abs(p - ph[0])
+                    # Gaussian of distance is weight
+                    w = e ** (-1*(float(dist) ** 2)) #TODO: gaussian coefficients
+                    #TODO: consider angle of incidence
+                    #TODO: transparency effect of refracting object
+                    res += light.color*light.intensity*self.diffuse*w
         return res
 
 class Specular(Texture):
@@ -443,10 +452,11 @@ class Light(Object):
         self.photons = {}
 
     def getphotons(self, world, transp_obj):
-        if self.photons.get(world, None) is not None:
-            return self.photons[world]
+        key = world, transp_obj
+        if self.photons.get(key, None) is not None:
+            return self.photons[key]
         photons = []
-        self.photons[world] = photons
+        self.photons[key] = photons
         for V in self.makephotons(self.nphotons):
             r = transp_obj.intersects(self.loc, V)
             if r is not False:
