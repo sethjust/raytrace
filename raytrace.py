@@ -2,7 +2,9 @@
 
 # raytrace.py -- Seth Just
 
-from math import sqrt, floor
+from math import floor
+from numpy import sqrt, pi, sin, cos
+import numpy
 import Image
 
 EPSILON = 1e-8
@@ -137,6 +139,7 @@ class Diffuse(Texture):
                 # Shadowed by transparent object
                 # Start by getting photons for the given light
                 photons = light.getphotons(world, o[2])
+                print len(photons)
                 #TODO: use photons to determine caustic density
         return res
 
@@ -372,9 +375,6 @@ class Sphere(Object):
             raise NotImplementedError # Totally internal reflection
         return np, rV, p.dist(np)
         
-    def photons(self, P, num):
-        return [(None, None)] #TODO
-
 class Plane(Object):
     def __init__(self, loc, normal, texture):
         Object.__init__(self, loc)
@@ -434,7 +434,7 @@ class Inverse(Object):
         return self.obj.shade(P, V.scale(-1))
     
 class Light(Object):
-    nphotons = 1024
+    nphotons = 8192
 
     def __init__(self, loc, color, intensity):
         Object.__init__(self, loc)
@@ -443,12 +443,35 @@ class Light(Object):
         self.photons = {}
 
     def getphotons(self, world, transp_obj):
-        if self.photons.get((world, transp_obj), None) is not None:
-            return self.photons[(world, transp_obj)]
-        photons = {}
-        self.photons[(world, transp_obj)] = photons
-        for (E, V) in transp_obj.photons(self.loc, photons):
-            raise ValueError("todo") #TODO
+        if self.photons.get(world, None) is not None:
+            return self.photons[world]
+        photons = []
+        self.photons[world] = photons
+        for V in self.makephotons(self.nphotons):
+            r = transp_obj.intersects(self.loc, V)
+            if r is not False:
+                p, text, pobj = r
+                np, nV, l = transp_obj.get_refracted_ray(self.loc, p, transp_obj.texture.ir) #TODO: handle partial transparency -- this assumes isinstance(transp_obj.texture, Transparent)
+                nr = world.intersects(np, nV)
+                if nr is not False:
+                    photons.append(nr) #TODO: need to indicate length of internal ray
+        return photons
+
+    def makephotons(self, n):
+        """
+        n points distributed evenly on the surface of a unit sphere
+        from http://stackoverflow.com/questions/14805583/dispersing-n-points-uniformly-on-a-sphere?lq=1
+        """ 
+        z = 2 * numpy.random.rand(n) - 1   # uniform in -1, 1
+        t = 2 * pi * numpy.random.rand(n)   # uniform in 0, 2*pi
+        x = sqrt(1 - z**2) * cos(t)
+        y = sqrt(1 - z**2) * sin(t)
+
+        result = []
+        for i in range(n):
+            result.append(Vector(x[i], y[i], z[i]))
+
+        return result
 
 class Camera(Object):
     def __init__(self, loc, aim, u=160):
