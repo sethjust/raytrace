@@ -2,9 +2,7 @@
 
 # raytrace.py -- Seth Just
 
-from math import floor
-from numpy import sqrt, pi, sin, cos, e
-import numpy
+from math import sqrt, floor
 import Image
 
 EPSILON = 1e-8
@@ -135,21 +133,6 @@ class Diffuse(Texture):
             o = world.intersects(p, (light.loc-p).norm(), [pobj])
             if o is False or p.dist(light.loc) < p.dist(o[0]):
                 res += light.color*light.intensity*pobj.shade(p, (light.loc-p).norm())*self.diffuse/(p.dist(light.loc)**2)
-            elif isinstance(o[2].texture, Transparent): #TODO: check for partial transparency
-                # Shadowed by transparent object
-                #TODO: make separate Caustic texture
-                #TODO: caustics outside shadows
-                # Start by getting photons for the given light
-                photons = light.getphotons(world, o[2])
-                # Keep only those falling on this object
-                photons = filter(lambda (php, phtext, phpobj): pobj is phpobj, photons)
-                for ph in photons:
-                    dist = abs(p - ph[0])
-                    # Gaussian of distance is weight
-                    w = e ** (-1*(float(dist) ** 2)) #TODO: gaussian coefficients
-                    #TODO: consider angle of incidence
-                    #TODO: transparency effect of refracting object
-                    res += light.color*light.intensity*self.diffuse*w
         return res
 
 class Specular(Texture):
@@ -384,6 +367,7 @@ class Sphere(Object):
             raise NotImplementedError # Totally internal reflection
         return np, rV, p.dist(np)
         
+
 class Plane(Object):
     def __init__(self, loc, normal, texture):
         Object.__init__(self, loc)
@@ -443,45 +427,10 @@ class Inverse(Object):
         return self.obj.shade(P, V.scale(-1))
     
 class Light(Object):
-    nphotons = 8192
-
     def __init__(self, loc, color, intensity):
         Object.__init__(self, loc)
         self.color = color
         self.intensity = intensity
-        self.photons = {}
-
-    def getphotons(self, world, transp_obj):
-        key = world, transp_obj
-        if self.photons.get(key, None) is not None:
-            return self.photons[key]
-        photons = []
-        self.photons[key] = photons
-        for V in self.makephotons(self.nphotons):
-            r = transp_obj.intersects(self.loc, V)
-            if r is not False:
-                p, text, pobj = r
-                np, nV, l = transp_obj.get_refracted_ray(self.loc, p, transp_obj.texture.ir) #TODO: handle partial transparency -- this assumes isinstance(transp_obj.texture, Transparent)
-                nr = world.intersects(np, nV)
-                if nr is not False:
-                    photons.append(nr) #TODO: need to indicate length of internal ray
-        return photons
-
-    def makephotons(self, n):
-        """
-        n points distributed evenly on the surface of a unit sphere
-        from http://stackoverflow.com/questions/14805583/dispersing-n-points-uniformly-on-a-sphere?lq=1
-        """ 
-        z = 2 * numpy.random.rand(n) - 1   # uniform in -1, 1
-        t = 2 * pi * numpy.random.rand(n)   # uniform in 0, 2*pi
-        x = sqrt(1 - z**2) * cos(t)
-        y = sqrt(1 - z**2) * sin(t)
-
-        result = []
-        for i in range(n):
-            result.append(Vector(x[i], y[i], z[i]))
-
-        return result
 
 class Camera(Object):
     def __init__(self, loc, aim, u=160):
@@ -524,30 +473,29 @@ if __name__ == "__main__":
         Plane(Coord(0,-2,0), Vector(0,1,0),
           Checkers(Diffuse(Color(255,255,255), .2), Diffuse(Color(0,0,0), .2))
         ),
-#        Intersection(
-#          Inverse(
-#            Sphere(Coord(0,0,-5), .95, Texture()),
-#            Texture()
-#          ),
-#          Intersection(
-#            Sphere(Coord(0,0,-5), 1, Texture()),
-#            HalfSpace(Coord(0,0,0), Vector(0,1,0), Texture()),
-#            Texture()
-#          ),
-#          CombTexture(
-#            (Reflective(), .2),
-#            (Diffuse(Color(255,0,0), .2), .8),
-#            (Specular(30), .8),
-#          )
-#        ),
+        Intersection(
+          Inverse(
+            Sphere(Coord(0,0,-5), .95, Texture()),
+            Texture()
+          ),
+          Intersection(
+            Sphere(Coord(0,0,-5), 1, Texture()),
+            HalfSpace(Coord(0,0,0), Vector(0,1,0), Texture()),
+            Texture()
+          ),
+          CombTexture(
+            (Reflective(), .2),
+            (Diffuse(Color(255,0,0), .2), .8),
+            (Specular(30), .8),
+          )
+        ),
         Sphere(Coord(-.2,.5,-5), .33,
-          Transparent(Color(0,255,0), .8, 1.1),
-#          CombTexture(
-#            (Transparent(Color(0,255,0), .8, 1.1), .7),
-#            (Reflective(), .1),
-#            (Diffuse(Color(0,255,0), .2), .2),
-#            (Specular(35), .4),
-#          )
+          CombTexture(
+            (Transparent(Color(0,255,0), .8, 1.1), .7),
+            (Reflective(), .1),
+            (Diffuse(Color(0,255,0), .2), .2),
+            (Specular(35), .4),
+          )
         ),
       ),
       [
